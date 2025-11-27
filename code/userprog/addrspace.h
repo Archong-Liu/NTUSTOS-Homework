@@ -19,6 +19,12 @@
 
 #define UserStackSize		1024 	// increase this as necessary!
 
+struct SwapEntry {
+    bool used;          // if this swap slot is used
+    int sector;            // corresponding virtual page number
+};
+
+
 class AddrSpace {
   public:
     AddrSpace();			// Create an address space.
@@ -32,7 +38,9 @@ class AddrSpace {
     void SaveState();			// Save/restore address space-specific
     void RestoreState();		// info on a context switch 
 
-  private:
+    SwapEntry *swapTable;   // Set the size of table to numPages, the number of pages in the virtual address space
+    int sectorsPerPage;
+
     TranslationEntry *pageTable;	// Assume linear page table translation
 					// for now!
     unsigned int numPages;		// Number of pages in the virtual 
@@ -43,7 +51,9 @@ class AddrSpace {
 
     void InitRegisters();		// Initialize user-level CPU registers,
 					// before jumping to user code
-
+  private:
+    char *execFileName;
+  
 };
 
 #endif // ADDRSPACE_H
