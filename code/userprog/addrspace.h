@@ -24,12 +24,14 @@ struct SwapEntry {
     int sector;            // corresponding virtual page number
 };
 
+enum ReplaceAlgo { FIFO_Algo, LRU_Algo };
+
 
 class AddrSpace {
   public:
     AddrSpace();			// Create an address space.
     ~AddrSpace();			// De-allocate an address space
-
+    static ReplaceAlgo replaceAlgo; // Current Algorithm
     static bool usedPhyPage[NumPhysPages];
     static int frameQueue[NumPhysPages];
     static int frameQueueHead;
