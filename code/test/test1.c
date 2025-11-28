@@ -1,7 +1,7 @@
 #include "syscall.h"
 int main() {
     // 故意宣告一個大陣列，超過 4KB（NachOS 預設主記憶體）
-    // int 大小 4 bytes -> 2000 個 int 約 8000 bytes
+    // int 大小 4 bytes -> 200 個 int 約 800 bytes
     const int N = 2000;
     volatile int a[N];
     int i;

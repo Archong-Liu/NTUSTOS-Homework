@@ -84,7 +84,7 @@ ExceptionHandler(ExceptionType which)
  		    break;
 	    }
 	    break;
-	case PageFaultException:
+	case PageFaultException: {
 		/*    Page Fault Exception    */
 		//userprog/exception.cc
 		// Get the bad virtual address from BadVAddrReg
@@ -92,7 +92,8 @@ ExceptionHandler(ExceptionType which)
 
 	    // Call Page Fault Handler for current thread's address space
 	    kernel->currentThread->space->PageFaultHandler(badVAddr);
-	    break;
+	    return;
+	}
 	default:
 	    cerr << "Unexpected user mode exception" << which << "\n";
 	    break;

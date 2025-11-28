@@ -28,6 +28,10 @@
 //	endian machine, and we're now running on a big endian machine.
 //----------------------------------------------------------------------
 
+int AddrSpace::frameQueue[NumPhysPages];
+int AddrSpace::frameQueueHead = 0;
+int AddrSpace::frameQueueTail = 0;
+
 
 bool AddrSpace::usedPhyPage[NumPhysPages] = {0};
 
@@ -143,7 +147,7 @@ AddrSpace::Load(char *fileName)
     // allocate swap table
     swapTable = new SwapEntry[numPages];
     for (unsigned int i = 0; i < numPages; i++) {
-        swapTable[i].valid = true;          // page has initial data in swap
+        swapTable[i].used = true;          // page has initial data in swap
         swapTable[i].sector = i * sectorsPerPage;
     }
 
@@ -282,8 +286,6 @@ AddrSpace::InitRegisters()
 
 void AddrSpace::SaveState() 
 {
-        pageTable=kernel->machine->pageTable;
-        numPages=kernel->machine->pageTableSize;
 }
 
 //----------------------------------------------------------------------
@@ -298,4 +300,82 @@ void AddrSpace::RestoreState()
 {
     kernel->machine->pageTable = pageTable;
     kernel->machine->pageTableSize = numPages;
+}
+
+
+void AddrSpace::PageFaultHandler(int badVAddr)
+{
+    int vpn = (unsigned)badVAddr / PageSize;
+    ASSERT(vpn >= 0 && vpn < (int)numPages);
+
+    // Step 1: try to find free physical frame
+    int frame = FindFreeFrame();
+
+    // Step 2: need replacement?
+    if (frame < 0) {
+        frame = SelectVictimFrame();
+
+        // evict victim page
+        for (unsigned int i = 0; i < numPages; i++) {
+            if (pageTable[i].physicalPage == frame) {
+
+                // write back if dirty
+                if (pageTable[i].dirty) {
+                    int sector = swapTable[i].sector;
+                    for (int s = 0; s < sectorsPerPage; s++) {
+                        kernel->synchDisk->WriteSector(
+                            sector + s,
+                            kernel->machine->mainMemory +
+                            frame * PageSize + s * SectorSize
+                        );
+                    }
+                }
+
+                // remove victim
+                pageTable[i].physicalPage = -1;
+                pageTable[i].valid = false;
+                break;
+            }
+        }
+    }
+
+    // Step 3: load faulted page from SynchDisk
+    int sector = swapTable[vpn].sector;
+
+    for (int s = 0; s < sectorsPerPage; s++) {
+        kernel->synchDisk->ReadSector(
+            sector + s,
+            kernel->machine->mainMemory + frame * PageSize + s * SectorSize
+        );
+    }
+
+    // Step 4: update pageTable
+    pageTable[vpn].physicalPage = frame;
+    pageTable[vpn].valid = true;
+    pageTable[vpn].use = false;
+    pageTable[vpn].dirty = false;
+
+    // Step 5: enqueue frame for FIFO
+    frameQueue[frameQueueTail] = frame;
+    frameQueueTail = (frameQueueTail + 1) % NumPhysPages;
+
+    // done, retry instruction automatically
+}
+
+int AddrSpace::FindFreeFrame()
+{
+    for (int i = 0; i < NumPhysPages; i++) {
+        if (!usedPhyPage[i]) {
+            usedPhyPage[i] = true;
+            return i;
+        }
+    }
+    return -1;
+}
+
+int AddrSpace::SelectVictimFrame()
+{
+    int frame = frameQueue[frameQueueHead];
+    frameQueueHead = (frameQueueHead + 1) % NumPhysPages;
+    return frame;
 }
