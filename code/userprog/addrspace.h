@@ -31,6 +31,10 @@ class AddrSpace {
     ~AddrSpace();			// De-allocate an address space
 
     static bool usedPhyPage[NumPhysPages];
+    static int frameQueue[NumPhysPages];
+    static int frameQueueHead;
+    static int frameQueueTail;
+
 
     void Execute(char *fileName);	// Run the the program
 					// stored in the file "executable"
@@ -54,7 +58,7 @@ class AddrSpace {
 
     void PageFaultHandler(int badVAddr);
     int FindFreeFrame();
-    int SelectVictimFrame();   // FIFO/LRU
+    int SelectVictimFrame();   // FIFO
 
   private:
     char *execFileName;

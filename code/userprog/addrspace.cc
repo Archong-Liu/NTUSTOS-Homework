@@ -66,6 +66,9 @@ AddrSpace::AddrSpace()
     
     // zero out the entire address space
 //    bzero(kernel->machine->mainMemory, MemorySize);
+
+    frameQueueHead = frameQueueTail = 0; // initialize FIFO queue
+
 }
 
 //----------------------------------------------------------------------
