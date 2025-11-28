@@ -24,6 +24,8 @@
 #include "copyright.h"
 #include "main.h"
 #include "syscall.h"
+#include "stats.h"
+
 
 //----------------------------------------------------------------------
 // ExceptionHandler
@@ -89,6 +91,9 @@ ExceptionHandler(ExceptionType which)
 		//userprog/exception.cc
 		// Get the bad virtual address from BadVAddrReg
 		int badVAddr = kernel->machine->ReadRegister(BadVAddrReg);
+		printf("Page Fault \n");
+
+		kernel->stats->numPageFaults++;
 
 	    // Call Page Fault Handler for current thread's address space
 	    kernel->currentThread->space->PageFaultHandler(badVAddr);
