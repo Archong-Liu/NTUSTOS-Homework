@@ -33,9 +33,7 @@ class UserProgKernel : public ThreadedKernel {
     Machine *machine;
     FileSystem *fileSystem;
 
-#ifdef FILESYS
     SynchDisk *synchDisk;
-#endif // FILESYS
 
   private:
     bool debugUserProg;		// single step user program
