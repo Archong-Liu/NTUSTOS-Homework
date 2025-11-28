@@ -72,8 +72,6 @@ AddrSpace::AddrSpace()
     // zero out the entire address space
 //    bzero(kernel->machine->mainMemory, MemorySize);
 
-    frameQueueHead = frameQueueTail = 0; // initialize FIFO queue
-
 }
 
 //----------------------------------------------------------------------
@@ -322,7 +320,7 @@ void AddrSpace::PageFaultHandler(int badVAddr)
         // evict victim page
         for (unsigned int i = 0; i < numPages; i++) {
             if (pageTable[i].physicalPage == frame) {
-                printf("page %d swapped\n", i);
+                printf("[SWAP OUT] frame %d evicted\n", frame);
                 // write back if dirty
                 if (pageTable[i].dirty) {
                     int sector = swapTable[i].sector;
@@ -359,10 +357,6 @@ void AddrSpace::PageFaultHandler(int badVAddr)
     pageTable[vpn].use = false;
     pageTable[vpn].dirty = false;
 
-    // Step 5: enqueue frame for FIFO
-    frameQueue[frameQueueTail] = frame;
-    frameQueueTail = (frameQueueTail + 1) % NumPhysPages;
-
     // done, retry instruction automatically
 }
 
@@ -371,6 +365,11 @@ int AddrSpace::FindFreeFrame()
     for (int i = 0; i < NumPhysPages; i++) {
         if (!usedPhyPage[i]) {
             usedPhyPage[i] = true;
+
+            // *** enqueue free frame into FIFO queue ***
+            frameQueue[frameQueueTail] = i;
+            frameQueueTail = (frameQueueTail + 1) % NumPhysPages;
+
             return i;
         }
     }
