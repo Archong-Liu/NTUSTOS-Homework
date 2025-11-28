@@ -321,6 +321,7 @@ void AddrSpace::PageFaultHandler(int badVAddr)
 
                 // write back if dirty
                 if (pageTable[i].dirty) {
+                    printf("page %d swapped\n", i);
                     int sector = swapTable[i].sector;
                     for (int s = 0; s < sectorsPerPage; s++) {
                         kernel->synchDisk->WriteSector(
