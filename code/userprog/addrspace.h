@@ -51,6 +51,11 @@ class AddrSpace {
 
     void InitRegisters();		// Initialize user-level CPU registers,
 					// before jumping to user code
+
+    void PageFaultHandler(int badVAddr);
+    int FindFreeFrame();
+    int SelectVictimFrame();   // FIFO/LRU
+
   private:
     char *execFileName;
   
