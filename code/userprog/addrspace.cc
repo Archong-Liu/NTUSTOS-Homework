@@ -119,44 +119,89 @@ AddrSpace::Load(char *fileName)
 						// to leave room for the stack
     numPages = divRoundUp(size, PageSize);
 //	cout << "number of pages of " << fileName<< " is "<<numPages<<endl;
-    size = numPages * PageSize;
 
-    numPages = divRoundUp(size,PageSize);
-    for(unsigned int i=0, j=0; i<numPages; i++){
+    // save executable fileName for page fault handler
+    if (execFileName != NULL)
+        delete [] execFileName;
+    execFileName = new char[strlen(fileName) + 1];
+    strcpy(execFileName, fileName);
+
+    // allocate pageTable (all invalid initially)
+    pageTable = new TranslationEntry[numPages];
+    for (unsigned int i = 0; i < numPages; i++) {
         pageTable[i].virtualPage = i;
-        while(j<NumPhysPages && AddrSpace::usedPhyPage[j] == true)
-            j++;
-        AddrSpace::usedPhyPage[j] = true;
-        pageTable[i].physicalPage = j;
-        pageTable[i].valid = true;
+        pageTable[i].physicalPage = -1;
+        pageTable[i].valid = false;
         pageTable[i].use = false;
         pageTable[i].dirty = false;
         pageTable[i].readOnly = false;
     }
 
-    size = numPages * PageSize;
-
-    ASSERT(numPages <= NumPhysPages);		// check we're not trying
-						// to run anything too big --
-						// at least until we have
-						// virtual memory
-
-    DEBUG(dbgAddr, "Initializing address space: " << numPages << ", " << size);
-
-// then, copy in the code and data segments into memory
-	if (noffH.code.size > 0) {
-        DEBUG(dbgAddr, "Initializing code segment.");
-	DEBUG(dbgAddr, noffH.code.virtualAddr << ", " << noffH.code.size);
-        	executable->ReadAt(
-		&(kernel->machine->mainMemory[pageTable[noffH.code.virtualAddr/PageSize].physicalPage * PageSize + (noffH.code.virtualAddr%PageSize)]), 
-			noffH.code.size, noffH.code.inFileAddr);
+    // allocate swap table
+    swapTable = new SwapEntry[numPages];
+    for (unsigned int i = 0; i < numPages; i++) {
+        swapTable[i].valid = true;          // page has initial data in swap
+        swapTable[i].sector = i * sectorsPerPage;
     }
-	if (noffH.initData.size > 0) {
-        DEBUG(dbgAddr, "Initializing data segment.");
-	DEBUG(dbgAddr, noffH.initData.virtualAddr << ", " << noffH.initData.size);
-        executable->ReadAt(
-		&(kernel->machine->mainMemory[pageTable[noffH.initData.virtualAddr/PageSize].physicalPage * PageSize + (noffH.code.virtualAddr%PageSize)]),
-			noffH.initData.size, noffH.initData.inFileAddr);
+
+     // write initial content of each virtual page into SynchDisk
+    char pageBuffer[PageSize];
+    SynchDisk *disk = kernel->synchDisk;
+
+    for (unsigned int vpn = 0; vpn < numPages; vpn++) {
+
+        memset(pageBuffer, 0, PageSize);
+
+        int virtAddr = vpn * PageSize;
+
+        //
+        // 1. copy code segment
+        //
+        if (noffH.code.size > 0) {
+            int codeStart = noffH.code.virtualAddr;
+            int codeEnd   = codeStart + noffH.code.size;
+
+            int pageStart = virtAddr;
+            int pageEnd   = pageStart + PageSize;
+
+            int overlapStart = max(codeStart, pageStart);
+            int overlapEnd   = min(codeEnd, pageEnd);
+
+            if (overlapStart < overlapEnd) {
+                int inFilePos = noffH.code.inFileAddr + (overlapStart - codeStart);
+                int count     = overlapEnd - overlapStart;
+                executable->ReadAt(pageBuffer + (overlapStart - pageStart),
+                                   count, inFilePos);
+            }
+        }    
+        // 2. copy initData segment
+        //
+        if (noffH.initData.size > 0) {
+            int dataStart = noffH.initData.virtualAddr;
+            int dataEnd   = dataStart + noffH.initData.size;
+
+            int pageStart = virtAddr;
+            int pageEnd   = pageStart + PageSize;
+
+            int overlapStart = max(dataStart, pageStart);
+            int overlapEnd   = min(dataEnd, pageEnd);
+
+            if (overlapStart < overlapEnd) {
+                int inFilePos = noffH.initData.inFileAddr + (overlapStart - dataStart);
+                int count     = overlapEnd - overlapStart;
+                executable->ReadAt(pageBuffer + (overlapStart - pageStart),
+                                   count, inFilePos);
+            }
+        }
+    //
+        // 3. write this page to backing store
+        //
+        int startSector = swapTable[vpn].sector;
+
+        for (int s = 0; s < sectorsPerPage; s++) {
+            disk->WriteSector(startSector + s,
+                              pageBuffer + SectorSize * s);
+        }
     }
 
     delete executable;			// close file
