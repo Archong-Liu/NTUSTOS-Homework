@@ -32,6 +32,7 @@ int AddrSpace::frameQueue[NumPhysPages];
 int AddrSpace::frameQueueHead = 0;
 int AddrSpace::frameQueueTail = 0;
 
+ReplaceAlgo AddrSpace::replaceAlgo = FIFO_Algo;
 
 bool AddrSpace::usedPhyPage[NumPhysPages] = {0};
 
@@ -133,6 +134,8 @@ AddrSpace::Load(char *fileName)
     execFileName = new char[strlen(fileName) + 1];
     strcpy(execFileName, fileName);
 
+    
+
     // allocate pageTable (all invalid initially)
     pageTable = new TranslationEntry[numPages];
     for (unsigned int i = 0; i < numPages; i++) {
@@ -142,6 +145,7 @@ AddrSpace::Load(char *fileName)
         pageTable[i].use = false;
         pageTable[i].dirty = false;
         pageTable[i].readOnly = false;
+        pageTable[i].lastUsedTime = 0;
     }
 
     // allocate swap table
@@ -307,7 +311,7 @@ void AddrSpace::PageFaultHandler(int badVAddr)
 {
     int vpn = (unsigned)badVAddr / PageSize;
     ASSERT(vpn >= 0 && vpn < (int)numPages);
-
+    pageTable[vpn].lastUsedTime = kernel->stats->totalTicks;
     // Step 1: try to find free physical frame
     int frame = FindFreeFrame();
 
@@ -318,10 +322,9 @@ void AddrSpace::PageFaultHandler(int badVAddr)
         // evict victim page
         for (unsigned int i = 0; i < numPages; i++) {
             if (pageTable[i].physicalPage == frame) {
-
+                printf("page %d swapped\n", i);
                 // write back if dirty
                 if (pageTable[i].dirty) {
-                    printf("page %d swapped\n", i);
                     int sector = swapTable[i].sector;
                     for (int s = 0; s < sectorsPerPage; s++) {
                         kernel->synchDisk->WriteSector(
@@ -376,7 +379,32 @@ int AddrSpace::FindFreeFrame()
 
 int AddrSpace::SelectVictimFrame()
 {
-    int frame = frameQueue[frameQueueHead];
-    frameQueueHead = (frameQueueHead + 1) % NumPhysPages;
-    return frame;
+    if (replaceAlgo == FIFO_Algo) {
+
+        int frame = frameQueue[frameQueueHead];
+        frameQueueHead = (frameQueueHead + 1) % NumPhysPages;
+        return frame;
+
+    } else { // LRU_Algo
+
+        int victimFrame = -1;
+        unsigned int oldestTime = 0xFFFFFFFF;
+
+        for (int frame = 0; frame < NumPhysPages; frame++) {
+            if (!usedPhyPage[frame]) continue;
+
+            for (unsigned int vpn = 0; vpn < numPages; vpn++) {
+                if (pageTable[vpn].physicalPage == frame) {
+                    if (pageTable[vpn].lastUsedTime < oldestTime) {
+                        oldestTime = pageTable[vpn].lastUsedTime;
+                        victimFrame = frame;
+                    }
+                    break;
+                }
+            }
+        }
+
+        ASSERT(victimFrame >= 0);
+        return victimFrame;
+    }
 }
