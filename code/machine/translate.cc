@@ -97,9 +97,6 @@ Machine::ReadMem(int addr, int size, int *value)
 	return FALSE;
     }
 
-    int ppn = physicalAddress / PageSize;
-    frameInfo[ppn].lastUsed = kernel->stats->totalTicks;
-
     switch (size) {
       case 1:
 	data = mainMemory[physicalAddress];
@@ -149,9 +146,6 @@ Machine::WriteMem(int addr, int size, int value)
 	RaiseException(exception, addr);
 	return FALSE;
     }
-
-    int ppn = physicalAddress / PageSize;
-    frameInfo[ppn].lastUsed = kernel->stats->totalTicks;
 
     switch (size) {
       case 1:
@@ -250,13 +244,8 @@ Machine::Translate(int virtAddr, int* physAddr, int size, bool writing)
 	return BusErrorException;
     }
     entry->use = TRUE;		// set the use, dirty bits
-    entry->lastUsedTime = kernel->stats->totalTicks;
-    
     int ppn = entry->physicalPage;
-    frameInfo[ppn].lastUsed = kernel->stats->totalTicks;; // for LRU
-    frameInfo[ppn].vpn = vpn;
-    frameInfo[ppn].space = kernel->currentThread->space;
-    
+    frameInfo[ppn].lastUsed = kernel->stats->totalTicks;
     if (writing)
 	entry->dirty = TRUE;
     *physAddr = pageFrame * PageSize + offset;

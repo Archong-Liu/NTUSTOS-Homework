@@ -322,8 +322,7 @@ void AddrSpace::PageFaultHandler(int badVAddr)
         AddrSpace* victimSpace = frameInfo[frame].space;
         int victimVpn = frameInfo[frame].vpn;
 
-        printf("[SWAP OUT] frame %d evicted\n", frame);
-        usedPhyPage[frame] = false;
+        printf("[SWAP OUT] page %d evicted, lastUsed time: %d\n", victimVpn, frameInfo[frame].lastUsed);
         if (victimSpace != nullptr) {
             // write back dirty page
             if (victimSpace->pageTable[victimVpn].dirty) {
@@ -339,10 +338,13 @@ void AddrSpace::PageFaultHandler(int badVAddr)
 
             victimSpace->pageTable[victimVpn].physicalPage = -1;
             victimSpace->pageTable[victimVpn].valid = false;
+            victimSpace->pageTable[victimVpn].dirty = false;
+            victimSpace->pageTable[victimVpn].use = false;
 
-            frame = FindFreeFrame();
-            ASSERT(frame >= 0);
         }
+        frameInfo[frame].space = nullptr;
+        frameInfo[frame].vpn = -1;
+        frameInfo[frame].lastUsed = 0xffffffff;
     }
 
     // Step 3: load faulted page from SynchDisk
@@ -361,10 +363,12 @@ void AddrSpace::PageFaultHandler(int badVAddr)
     pageTable[vpn].use = false;
     pageTable[vpn].dirty = false;
 
+
     // update frameInfo
     frameInfo[frame].space = this;
     frameInfo[frame].vpn = vpn;
     frameInfo[frame].lastUsed = kernel->stats->totalTicks;
+    printf("[SWAP IN] page %d loaded into frame %d at time: %d\n", vpn,frame, frameInfo[frame].lastUsed);
 }
 
 
