@@ -19,10 +19,20 @@
 
 #define UserStackSize		1024 	// increase this as necessary!
 
+class AddrSpace;
+
 struct SwapEntry {
     bool used;          // if this swap slot is used
     int sector;            // corresponding virtual page number
 };
+
+struct FrameInfo {
+    AddrSpace* space;    // 這個 frame 屬於哪個 AddrSpace
+    int vpn;             // 這個 frame 裝的是哪個 virtual page
+    unsigned int lastUsed; // LRU timestamp
+};
+
+extern FrameInfo frameInfo[NumPhysPages];
 
 enum ReplaceAlgo { FIFO_Algo, LRU_Algo };
 

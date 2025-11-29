@@ -32,6 +32,8 @@ int AddrSpace::frameQueue[NumPhysPages];
 int AddrSpace::frameQueueHead = 0;
 int AddrSpace::frameQueueTail = 0;
 
+FrameInfo frameInfo[NumPhysPages];
+
 ReplaceAlgo AddrSpace::replaceAlgo = FIFO_Algo;
 
 bool AddrSpace::usedPhyPage[NumPhysPages] = {0};
@@ -309,35 +311,37 @@ void AddrSpace::PageFaultHandler(int badVAddr)
 {
     int vpn = (unsigned)badVAddr / PageSize;
     ASSERT(vpn >= 0 && vpn < (int)numPages);
-    pageTable[vpn].lastUsedTime = kernel->stats->totalTicks;
     // Step 1: try to find free physical frame
     int frame = FindFreeFrame();
 
     // Step 2: need replacement?
     if (frame < 0) {
         frame = SelectVictimFrame();
+        
+        // victim info
+        AddrSpace* victimSpace = frameInfo[frame].space;
+        int victimVpn = frameInfo[frame].vpn;
 
-        // evict victim page
-        for (unsigned int i = 0; i < numPages; i++) {
-            if (pageTable[i].physicalPage == frame) {
-                printf("[SWAP OUT] frame %d evicted\n", frame);
-                // write back if dirty
-                if (pageTable[i].dirty) {
-                    int sector = swapTable[i].sector;
-                    for (int s = 0; s < sectorsPerPage; s++) {
-                        kernel->synchDisk->WriteSector(
-                            sector + s,
-                            kernel->machine->mainMemory +
-                            frame * PageSize + s * SectorSize
-                        );
-                    }
+        printf("[SWAP OUT] frame %d evicted\n", frame);
+        usedPhyPage[frame] = false;
+        if (victimSpace != nullptr) {
+            // write back dirty page
+            if (victimSpace->pageTable[victimVpn].dirty) {
+                int sector = victimSpace->swapTable[victimVpn].sector;
+                for (int s = 0; s < sectorsPerPage; s++) {
+                    kernel->synchDisk->WriteSector(
+                        sector + s,
+                        kernel->machine->mainMemory +
+                        frame * PageSize + s * SectorSize
+                    );
                 }
-
-                // remove victim
-                pageTable[i].physicalPage = -1;
-                pageTable[i].valid = false;
-                break;
             }
+
+            victimSpace->pageTable[victimVpn].physicalPage = -1;
+            victimSpace->pageTable[victimVpn].valid = false;
+
+            frame = FindFreeFrame();
+            ASSERT(frame >= 0);
         }
     }
 
@@ -357,8 +361,13 @@ void AddrSpace::PageFaultHandler(int badVAddr)
     pageTable[vpn].use = false;
     pageTable[vpn].dirty = false;
 
-    // done, retry instruction automatically
+    // update frameInfo
+    frameInfo[frame].space = this;
+    frameInfo[frame].vpn = vpn;
+    frameInfo[frame].lastUsed = kernel->stats->totalTicks;
 }
+
+
 
 int AddrSpace::FindFreeFrame()
 {
@@ -386,23 +395,19 @@ int AddrSpace::SelectVictimFrame()
 
     } else { // LRU_Algo
 
+        unsigned int oldest = 0xffffffff;
         int victimFrame = -1;
-        unsigned int oldestTime = 0xFFFFFFFF;
 
-        for (int frame = 0; frame < NumPhysPages; frame++) {
-            if (!usedPhyPage[frame]) continue;
+        for (int f = 0; f < NumPhysPages; f++) {
+            if (!usedPhyPage[f]) continue; // free frame 不當 victim
 
-            for (unsigned int vpn = 0; vpn < numPages; vpn++) {
-                if (pageTable[vpn].physicalPage == frame) {
-                    if (pageTable[vpn].lastUsedTime < oldestTime) {
-                        oldestTime = pageTable[vpn].lastUsedTime;
-                        victimFrame = frame;
-                    }
-                    break;
+            if (frameInfo[f].space != nullptr) {
+                if (frameInfo[f].lastUsed < oldest) {
+                    oldest = frameInfo[f].lastUsed;
+                    victimFrame = f;
                 }
             }
         }
-
         ASSERT(victimFrame >= 0);
         return victimFrame;
     }
