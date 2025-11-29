@@ -13,8 +13,8 @@ coff2noff
 
 # test folder
 #/code/test/*.c
-#/code/test/*
-#/code/test/halt
+/code/test/*
+/code/test/halt
 
 # Temp file
 *.swp
@@ -22,3 +22,6 @@ coff2noff
 
 # VSCode related
 .vscode
+
+#SyncDisk
+/code/"New SynchDisk"
